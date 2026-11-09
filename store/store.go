@@ -12,6 +12,7 @@ var (
     ErrEmailTaken   = errors.New("email taken")
     ErrReviewExists = errors.New("review exists")
     ErrBadProvince  = errors.New("bad province")
+    ErrForbidden    = errors.New("forbidden")
 )
 
 type Store struct {

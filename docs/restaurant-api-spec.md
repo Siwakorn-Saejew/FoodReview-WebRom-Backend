@@ -19,6 +19,7 @@
 | 2 | GET | /api/restaurants/{id} | Guest | รายละเอียดร้าน หน้า RestaurantDetail |
 | 3 | GET | /api/restaurants/{id}/reviews | Guest | รีวิวของร้าน (มีรูป) |
 | 4 | POST | /api/restaurants/{id}/reviews | Member | เขียนรีวิว (JSON หรือ multipart แนบรูป) |
+| 4b | DELETE | /api/reviews/{id} | Member | ลบ **รีวิวของตัวเอง** (ของคนอื่นตอบ 403) |
 | 5 | GET | /api/photos/{id} | Guest | ไฟล์รูปของรีวิว ใช้เป็น src ของ `<img>` |
 | 6 | GET | /api/wishlist | Member | หน้า "ร้านที่อยากไปกิน" |
 | 7 | POST | /api/wishlist | Member | กดหัวใจ เพิ่มร้านที่อยากไปกิน |
@@ -116,7 +117,7 @@ Query parameter ใช้ร่วมกันได้ทั้งหมด เ
 
 ## #3 GET /api/restaurants/{id}/reviews
 
-รับ `page`, `limit` เหมือน #1 เรียงใหม่สุดก่อน `photos` คือรูปที่แนบกับรีวิว (ไม่มีรูปตอบ array ว่าง) `url` เอาไปต่อกับที่อยู่ backend แล้วใส่ `<img src>` ได้เลย
+รับ `page`, `limit` เหมือน #1 เรียงใหม่สุดก่อน ถ้าแนบ `Authorization` มาด้วย ให้ตอบ `isMine` = `true` เฉพาะรีวิวของสมาชิกคนนั้น (ไม่แนบตอบ `false` ทุกรีวิว) หน้าเว็บใช้โชว์ปุ่ม "ลบรีวิวของฉัน" `photos` คือรูปที่แนบกับรีวิว (ไม่มีรูปตอบ array ว่าง) `url` เอาไปต่อกับที่อยู่ backend แล้วใส่ `<img src>` ได้เลย
 
 ```json
 {
@@ -127,7 +128,8 @@ Query parameter ใช้ร่วมกันได้ทั้งหมด เ
       "text": "น้ำซุปเข้มข้นมาก เส้นเหนียวนุ่ม คุ้มราคา",
       "authorName": "สมชาย",
       "createdAt": "2026-11-01T12:30:00Z",
-      "photos": [{ "id": 12, "url": "/api/photos/12" }]
+      "photos": [{ "id": 12, "url": "/api/photos/12" }],
+      "isMine": false
     }
   ],
   "page": 1, "limit": 20, "total": 1
@@ -142,7 +144,7 @@ Query parameter ใช้ร่วมกันได้ทั้งหมด เ
 2. **multipart/form-data** (แนบรูป) ฟิลด์ `rating`, `text`, `authorName` เป็นข้อความ และฟิลด์ `photos` เป็นไฟล์ (ส่งซ้ำชื่อเดิมได้สูงสุด 3 ไฟล์) หน้าเว็บไม่ตั้ง `Content-Type` เอง ให้เบราว์เซอร์ใส่ boundary
 
 หน้าเว็บส่ง `authorName` จาก displayName ของสมาชิก
-ตอบ 201 พร้อม `{ "id": 1, "rating": 5, "text": "...", "authorName": "สมชาย", "createdAt": "2026-11-07T10:00:00Z", "photos": [{ "id": 12, "url": "/api/photos/12" }] }`
+ตอบ 201 พร้อม `{ "id": 1, "rating": 5, "text": "...", "authorName": "สมชาย", "createdAt": "2026-11-07T10:00:00Z", "photos": [{ "id": 12, "url": "/api/photos/12" }], "isMine": true }`
 
 กฎตรวจข้อมูล (ตอบ 400 พร้อม `{ "error": "ข้อความ" }` ตรวจตามลำดับนี้):
 
@@ -160,6 +162,16 @@ Query parameter ใช้ร่วมกันได้ทั้งหมด เ
 หลังบันทึกแล้ว backend ต้องอัปเดต `rating` (ค่าเฉลี่ย ปัด 1 ตำแหน่ง) และ `reviewCount` ของร้านด้วย (ใน DB ทำด้วย trigger ดู db-schema.md)
 
 หน้าเว็บย่อรูปก่อนส่ง (ด้านยาวไม่เกิน 1280 px แปลงเป็น JPEG) ปกติจึงเหลือหลักร้อย KB ต่อรูป
+
+## #4b DELETE /api/reviews/{id} (Member)
+
+สมาชิกลบรีวิวของตัวเอง ตอบ 204 ไม่มี body (รูปของรีวิวถูกลบตาม และ backend คำนวณ `rating` กับ `reviewCount` ของร้านใหม่)
+
+- ไม่มี token: 401 `{ "error": "กรุณาเข้าสู่ระบบก่อน" }`
+- ไม่พบรีวิว: 404 `{ "error": "ไม่พบรีวิว" }`
+- รีวิวเป็นของสมาชิกคนอื่น: 403 `{ "error": "ลบได้เฉพาะรีวิวของตัวเอง" }`
+
+**ใครเป็นเจ้าของรีวิว backend ตัดสินจาก token เท่านั้น** ห้ามเชื่อ id สมาชิกที่หน้าเว็บส่งมา และต้องตรวจเจ้าของในคำสั่งลบเดียวกัน (`DELETE ... WHERE id = $1 AND member_id = $2`) admin ลบรีวิวของใครก็ได้ที่ `DELETE /api/admin/reviews/{id}` (#20)
 
 ## #5 GET /api/photos/{id}
 

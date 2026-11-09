@@ -120,6 +120,7 @@ erDiagram
 | `GET /api/restaurants?q=&province=&cuisine=&sort=&page=&limit=` | restaurants + provinces + restaurant_cuisines + cuisines | ค้นหา (ชื่อ/เมนู) กรองจังหวัด/ประเภท เรียงลำดับ แบ่งหน้า |
 | `GET /api/restaurants/{id}` | restaurants + provinces + restaurant_cuisines + restaurant_awards | รายละเอียดร้าน |
 | `GET/POST /api/restaurants/{id}/reviews` | reviews + review_photos | อ่าน/เขียนรีวิวพร้อมรูป (เขียนต้องเป็น Member) |
+| `DELETE /api/reviews/{id}` | reviews (+ review_photos ตาม cascade) | สมาชิกลบรีวิวของตัวเอง |
 | `GET /api/photos/{id}` | review_photos | ส่งไฟล์รูปให้ `<img>` |
 | `GET/POST/DELETE /api/wishlist` | wishlist_items | ดู/เพิ่ม/ลบร้านที่อยากไปกิน (ต้องเป็น Member) |
 | `/api/admin/*` | ทุกตาราง | จัดการร้าน รีวิว สมาชิก (ต้องเป็น Admin) |
@@ -188,6 +189,16 @@ SELECT review_id, id FROM review_photos WHERE review_id = ANY($1) ORDER BY revie
 
 -- ตอนเบราว์เซอร์ขอรูป GET /api/photos/{id}
 SELECT content_type, data FROM review_photos WHERE id = $1;
+```
+
+### สมาชิกลบรีวิวของตัวเอง
+
+```sql
+-- เงื่อนไขเจ้าของอยู่ในคำสั่งลบเดียวกัน (ไม่ SELECT ตรวจก่อนแล้วค่อยลบ จะได้ไม่มีช่วงเวลาที่ผ่านแล้วลบของคนอื่น)
+DELETE FROM reviews WHERE id = $1 AND member_id = $2;
+-- ลบได้ 1 แถว -> 204 (รูปใน review_photos หายตาม และ trigger คำนวณ rating ของร้านใหม่)
+-- ลบได้ 0 แถว -> เช็กต่อว่ามีรีวิวนี้ไหม: ไม่มี = 404, มีแต่ไม่ใช่ของเรา = 403
+SELECT EXISTS (SELECT 1 FROM reviews WHERE id = $1);
 ```
 
 ### ข้อมูลที่ผูกกับร้าน (ใช้ในหน้าลบร้านของ Admin)

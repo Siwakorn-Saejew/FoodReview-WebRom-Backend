@@ -49,7 +49,8 @@ func (h *Handler) ListReviews(w http.ResponseWriter, r *http.Request) {
         return
     }
     page, limit := pageParams(r.URL.Query())
-    items, total, err := h.Store.ListReviews(r.Context(), id, page, limit)
+    memberID, _ := mw.MemberID(r.Context()) // 0 ถ้าเป็น Guest (แนบตั๋วมาด้วยจะได้ isMine ของรีวิวตัวเอง)
+    items, total, err := h.Store.ListReviews(r.Context(), id, page, limit, memberID)
     if err != nil {
         internal(w, err)
         return
@@ -200,6 +201,34 @@ func (h *Handler) CreateReview(w http.ResponseWriter, r *http.Request) {
         return
     }
     writeJSON(w, http.StatusCreated, review)
+}
+
+// DeleteReview: DELETE /api/reviews/{id} สมาชิกลบรีวิวของตัวเอง (ครอบด้วย RequireLogin ใน main.go แล้ว)
+// "ใครเป็นคนลบ" อ่านจากตั๋วเท่านั้น ไม่รับจาก body หรือ query ส่วน admin ลบของคนอื่นได้ที่ /api/admin/reviews/{id}
+func (h *Handler) DeleteReview(w http.ResponseWriter, r *http.Request) {
+    id, ok := pathID(r, "id")
+    if !ok {
+        writeError(w, http.StatusNotFound, "ไม่พบรีวิว")
+        return
+    }
+    memberID, ok := mw.MemberID(r.Context())
+    if !ok {
+        writeError(w, http.StatusUnauthorized, "กรุณาเข้าสู่ระบบก่อน")
+        return
+    }
+    err := h.Store.DeleteOwnReview(r.Context(), id, memberID)
+    switch {
+    case errors.Is(err, store.ErrNotFound):
+        writeError(w, http.StatusNotFound, "ไม่พบรีวิว")
+        return
+    case errors.Is(err, store.ErrForbidden):
+        writeError(w, http.StatusForbidden, "ลบได้เฉพาะรีวิวของตัวเอง")
+        return
+    case err != nil:
+        internal(w, err)
+        return
+    }
+    w.WriteHeader(http.StatusNoContent)
 }
 
 // GetPhoto: GET /api/photos/{id} (สาธารณะ ใช้เป็น src ของ <img>) ส่งไฟล์รูปที่เก็บไว้ในฐานข้อมูล

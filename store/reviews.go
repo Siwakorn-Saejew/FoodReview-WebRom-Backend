@@ -34,6 +34,7 @@ type Review struct {
     AuthorName string     `json:"authorName"`
     CreatedAt  time.Time  `json:"createdAt"`
     Photos     []PhotoRef `json:"photos"`
+    IsMine     bool       `json:"isMine"` // true = รีวิวของสมาชิกที่ถือตั๋วคนนี้ (หน้าเว็บใช้โชว์ปุ่มลบ) Guest ได้ false เสมอ
 }
 
 // photoRefs หารูปของรีวิวหลายอันในคำสั่งเดียว (ไม่ดึงตัวไฟล์ ดึงแค่เลข id) คืน map: เลขรีวิว -> รูป
@@ -58,17 +59,18 @@ func (s *Store) photoRefs(ctx context.Context, reviewIDs []int64) (map[int64][]P
     return out, rows.Err()
 }
 
-func (s *Store) ListReviews(ctx context.Context, restaurantID int64, page, limit int) ([]Review, int, error) {
+// ListReviews memberID = 0 คือ Guest (ทุกรีวิวได้ isMine = false)
+func (s *Store) ListReviews(ctx context.Context, restaurantID int64, page, limit int, memberID int64) ([]Review, int, error) {
     var total int
     if err := s.Pool.QueryRow(ctx,
         `SELECT count(*) FROM reviews WHERE restaurant_id = $1`, restaurantID).Scan(&total); err != nil {
         return nil, 0, err
     }
     rows, err := s.Pool.Query(ctx,
-        `SELECT id, rating, text, author_name, created_at
+        `SELECT id, rating, text, author_name, created_at, member_id = $4
          FROM reviews WHERE restaurant_id = $1
          ORDER BY created_at DESC, id DESC
-         LIMIT $2 OFFSET $3`, restaurantID, limit, (page-1)*limit)
+         LIMIT $2 OFFSET $3`, restaurantID, limit, (page-1)*limit, memberID)
     if err != nil {
         return nil, 0, err
     }
@@ -77,7 +79,7 @@ func (s *Store) ListReviews(ctx context.Context, restaurantID int64, page, limit
     ids := []int64{}
     for rows.Next() {
         var r Review
-        if err := rows.Scan(&r.ID, &r.Rating, &r.Text, &r.AuthorName, &r.CreatedAt); err != nil {
+        if err := rows.Scan(&r.ID, &r.Rating, &r.Text, &r.AuthorName, &r.CreatedAt, &r.IsMine); err != nil {
             return nil, 0, err
         }
         out = append(out, r)
@@ -131,6 +133,7 @@ func (s *Store) CreateReview(ctx context.Context, restaurantID, memberID int64, 
         return Review{}, err
     }
 
+    r.IsMine = true // เพิ่งเขียนเอง
     r.Photos = []PhotoRef{}
     for i, p := range photos {
         var photoID int64
@@ -147,6 +150,28 @@ func (s *Store) CreateReview(ctx context.Context, restaurantID, memberID int64, 
         return Review{}, err
     }
     return r, nil
+}
+
+// DeleteOwnReview ให้สมาชิกลบ "รีวิวของตัวเอง" เท่านั้น (รูปถูกลบตามด้วย ON DELETE CASCADE และ trigger คำนวณ rating ของร้านใหม่)
+// เงื่อนไขเจ้าของอยู่ใน SQL เดียวกับคำสั่งลบ (WHERE member_id = $2) จึงไม่มีช่วงเวลาที่ตรวจผ่านแต่ลบของคนอื่นไปได้
+// ไม่พบรีวิวตอบ ErrNotFound, มีแต่เป็นของคนอื่นตอบ ErrForbidden
+func (s *Store) DeleteOwnReview(ctx context.Context, id, memberID int64) error {
+    tag, err := s.Pool.Exec(ctx, `DELETE FROM reviews WHERE id = $1 AND member_id = $2`, id, memberID)
+    if err != nil {
+        return err
+    }
+    if tag.RowsAffected() > 0 {
+        return nil
+    }
+    // ไม่มีแถวถูกลบ: แยกให้ออกว่า "ไม่มีรีวิวนี้" หรือ "มีแต่ไม่ใช่ของเรา"
+    var exists bool
+    if err := s.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM reviews WHERE id = $1)`, id).Scan(&exists); err != nil {
+        return err
+    }
+    if exists {
+        return ErrForbidden
+    }
+    return ErrNotFound
 }
 
 // GetPhoto ดึงไฟล์รูปจริงมาส่งให้เบราว์เซอร์ ไม่พบตอบ ErrNotFound

@@ -96,8 +96,9 @@ func main() {
     // ร้านอาหาร + รีวิว: Guest ดูได้ เขียนรีวิวต้องเป็น Member
     mux.HandleFunc("GET /api/restaurants", optional(h.SearchRestaurants))
     mux.HandleFunc("GET /api/restaurants/{id}", optional(h.GetRestaurant))
-    mux.HandleFunc("GET /api/restaurants/{id}/reviews", h.ListReviews)
+    mux.HandleFunc("GET /api/restaurants/{id}/reviews", optional(h.ListReviews)) // แนบตั๋ว = ได้ isMine ของรีวิวตัวเอง
     mux.HandleFunc("POST /api/restaurants/{id}/reviews", login(h.CreateReview)) // JSON หรือ multipart (แนบรูปได้ 3 รูป)
+    mux.HandleFunc("DELETE /api/reviews/{id}", login(h.DeleteReview))           // ลบได้เฉพาะรีวิวของตัวเอง
     mux.HandleFunc("GET /api/photos/{id}", h.GetPhoto)                         // ไฟล์รูปของรีวิว ใช้เป็น src ของ <img>
 
     // ร้านที่อยากไปกิน: เฉพาะ Member

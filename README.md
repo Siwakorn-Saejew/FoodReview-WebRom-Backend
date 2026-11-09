@@ -9,12 +9,6 @@ Tech stack: Go (`net/http` + `ServeMux`), PostgreSQL, `pgx/v5` (connection pool)
 
 Docker ใช้รันแค่ฐานข้อมูล (PostgreSQL) ส่วน Go รันด้วย `go run .` ในเครื่อง (ต้องติดตั้ง Go และ Docker)
 
-go get github.com/golang-jwt/jwt/v5 #เตรียมjwt
-openssl rand -hex 32 > .jwt_secret
-echo .jwt_secret >> .gitignore
-export JWT_SECRET=$(cat .jwt_secret)
-echo ${#JWT_SECRET} #แล้วเอาไฟล์จาก.jwt_secret ไปใส่ใน.env
-
 ```bash
 cp .env.example .env                  # แก้ JWT_SECRET ตามต้องการ (ยาวอย่างน้อย 32 ตัวอักษร)
 
@@ -97,6 +91,7 @@ curl -s -X POST localhost:4000/api/restaurants/1/reviews -H "Authorization: Bear
 | GET | `/api/restaurants/{id}` | Guest (แนบ token = ได้ `isWishlisted`) |
 | GET | `/api/restaurants/{id}/reviews` | Guest |
 | POST | `/api/restaurants/{id}/reviews` (JSON หรือ multipart แนบรูป) | Member |
+| DELETE | `/api/reviews/{id}` | Member (ลบได้เฉพาะรีวิวของตัวเอง ของคนอื่น 403) |
 | GET | `/api/photos/{id}` | Guest (ไฟล์รูปของรีวิว) |
 | GET / POST | `/api/wishlist` | Member |
 | DELETE | `/api/wishlist/{restaurantId}` | Member |
