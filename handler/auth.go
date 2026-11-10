@@ -12,7 +12,7 @@ import (
     "foodjubb/store"
 )
 
-// รหัสผ่านอย่างน้อย 4 ตัวตามที่หน้าเว็บและสัญญา API กำหนด (moviehub ใช้ 8 ปรับเพิ่มได้ตรงนี้ที่เดียว)
+// รหัสผ่านอย่างน้อย 4 ตัวตามที่หน้าเว็บและสัญญา API กำหนด 
 const minPasswordLen = 4
 
 type registerReq struct {
